@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import {
   Home,
   Bell,
@@ -25,8 +24,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/lib/supabase";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: Home },
@@ -41,20 +39,6 @@ export function AppSidebar() {
   const { open } = useSidebar();
   const location = useLocation();
   const { user, signOut } = useAuth();
-  const [profile, setProfile] = useState<any>(null);
-
-  useEffect(() => {
-    if (user) {
-      supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single()
-        .then(({ data }) => {
-          if (data) setProfile(data);
-        });
-    }
-  }, [user]);
 
   const currentPath = location.pathname;
   const isActive = (path: string) => currentPath === path;
@@ -74,7 +58,7 @@ export function AppSidebar() {
             <div className="flex flex-col">
               <span className="text-lg font-semibold">Campus Hub</span>
               <span className="text-xs text-muted-foreground">
-                {profile?.role || 'Loading...'}
+                {user?.role || 'Loading...'}
               </span>
             </div>
           )}
@@ -127,15 +111,14 @@ export function AppSidebar() {
       <SidebarFooter>
         <div className={`flex items-center gap-3 p-3 ${!open ? 'justify-center' : ''}`}>
           <Avatar className="h-9 w-9">
-            <AvatarImage src={profile?.avatar_url} alt={profile?.full_name} />
             <AvatarFallback className="bg-primary text-primary-foreground">
-              {profile?.full_name?.charAt(0) || 'U'}
+              {user?.name?.charAt(0)?.toUpperCase() || 'U'}
             </AvatarFallback>
           </Avatar>
           {open && (
             <div className="flex flex-col flex-1 min-w-0">
-              <span className="text-sm font-medium truncate">{profile?.full_name}</span>
-              <span className="text-xs text-muted-foreground truncate">{profile?.email}</span>
+              <span className="text-sm font-medium truncate">{user?.name || 'User'}</span>
+              <span className="text-xs text-muted-foreground truncate">{user?.email || 'Updating profile...'}</span>
             </div>
           )}
         </div>

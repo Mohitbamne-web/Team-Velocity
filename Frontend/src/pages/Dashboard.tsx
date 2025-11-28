@@ -1,17 +1,16 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Bell, Calendar, BookOpen, Users, TrendingUp, Clock } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
+import { apiRequest } from "@/lib/api";
 
 export default function Dashboard() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const navigate = useNavigate();
-  const [profile, setProfile] = useState<any>(null);
   const [stats, setStats] = useState({
     announcements: 0,
     upcomingEvents: 0,
@@ -21,70 +20,27 @@ export default function Dashboard() {
   const [recentAnnouncements, setRecentAnnouncements] = useState<any[]>([]);
   const [upcomingEvents, setUpcomingEvents] = useState<any[]>([]);
 
-  useEffect(() => {
-    if (user) {
-      fetchDashboardData();
+  const fetchDashboardData = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await apiRequest<{
+        stats: typeof stats;
+        recentAnnouncements: any[];
+        upcomingEvents: any[];
+      }>("/common/dashboard", { token });
+
+      setStats(data.stats);
+      setRecentAnnouncements(data.recentAnnouncements || []);
+      setUpcomingEvents(data.upcomingEvents || []);
+    } catch (error) {
+      // Silently fail on dashboard load to avoid blocking entire page
+      console.error("Failed to load dashboard data", error);
     }
-  }, [user]);
+  }, [token]);
 
-  const fetchDashboardData = async () => {
-    // Fetch profile
-    const { data: profileData } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("id", user?.id)
-      .single();
-    
-    if (profileData) setProfile(profileData);
-
-    // Fetch announcements count
-    const { count: announcementsCount } = await supabase
-      .from("announcements")
-      .select("*", { count: "exact", head: true })
-      .gte("expires_at", new Date().toISOString())
-      .or(`expires_at.is.null`);
-
-    // Fetch upcoming events
-    const { data: eventsData, count: eventsCount } = await supabase
-      .from("events")
-      .select("*")
-      .gte("start_time", new Date().toISOString())
-      .order("start_time", { ascending: true })
-      .limit(3);
-
-    // Fetch active bookings
-    const { count: bookingsCount } = await supabase
-      .from("bookings")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user?.id)
-      .in("status", ["pending", "approved"]);
-
-    // Fetch groups
-    const { count: groupsCount } = await supabase
-      .from("group_members")
-      .select("*", { count: "exact", head: true })
-      .eq("user_id", user?.id);
-
-    // Fetch recent announcements with author info
-    const { data: announcementsData } = await supabase
-      .from("announcements")
-      .select(`
-        *,
-        author:profiles(full_name, role)
-      `)
-      .order("created_at", { ascending: false })
-      .limit(3);
-
-    setStats({
-      announcements: announcementsCount || 0,
-      upcomingEvents: eventsCount || 0,
-      activeBookings: bookingsCount || 0,
-      myGroups: groupsCount || 0,
-    });
-
-    setRecentAnnouncements(announcementsData || []);
-    setUpcomingEvents(eventsData || []);
-  };
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   const getPriorityColor = (priority: string) => {
     const colors: Record<string, string> = {
@@ -100,11 +56,11 @@ export default function Dashboard() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Welcome back, {profile?.full_name?.split(' ')[0] || 'there'}!</h1>
+          <h1 className="text-3xl font-bold">Welcome back, {user?.name?.split(' ')[0] || 'there'}!</h1>
           <p className="text-muted-foreground mt-1">Here's what's happening on campus today</p>
         </div>
         <Badge variant="outline" className="text-sm px-3 py-1">
-          {profile?.role || 'Loading...'}
+          {user?.role || 'Loading...'}
         </Badge>
       </div>
 

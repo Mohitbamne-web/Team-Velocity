@@ -1,55 +1,59 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BookOpen, Calendar, MapPin } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/api";
 
 export default function Resources() {
-  const { user } = useAuth();
+  const { token } = useAuth();
   const [resources, setResources] = useState<any[]>([]);
   const [bookings, setBookings] = useState<any[]>([]);
+
+  const fetchResources = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await apiRequest<any[]>("/common/resources", { token });
+      setResources(data);
+    } catch (error) {
+      console.error("Failed to load resources", error);
+    }
+  }, [token]);
+
+  const fetchMyBookings = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await apiRequest<any[]>("/common/bookings", { token });
+      setBookings(data);
+    } catch (error) {
+      console.error("Failed to load bookings", error);
+    }
+  }, [token]);
 
   useEffect(() => {
     fetchResources();
     fetchMyBookings();
-  }, [user]);
-
-  const fetchResources = async () => {
-    const { data } = await supabase
-      .from("resources")
-      .select("*")
-      .eq("is_available", true)
-      .order("name");
-    if (data) setResources(data);
-  };
-
-  const fetchMyBookings = async () => {
-    const { data } = await supabase
-      .from("bookings")
-      .select("*, resource:resources(*)")
-      .eq("user_id", user?.id)
-      .order("start_time", { ascending: false });
-    if (data) setBookings(data);
-  };
+  }, [fetchResources, fetchMyBookings]);
 
   const handleBook = async (resourceId: string) => {
-    const { error } = await supabase.from("bookings").insert([{
-      resource_id: resourceId,
-      user_id: user?.id,
-      start_time: new Date(Date.now() + 86400000).toISOString(),
-      end_time: new Date(Date.now() + 90000000).toISOString(),
-      purpose: "General use",
-      status: "pending",
-    }]);
-
-    if (error) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
-    } else {
+    try {
+      if (!token) {
+        throw new Error("Missing session. Please sign in again.");
+      }
+      await apiRequest("/common/bookings", {
+        method: "POST",
+        token,
+        body: {
+          resourceId,
+          purpose: "General use",
+        },
+      });
       toast({ title: "Success", description: "Booking request submitted" });
       fetchMyBookings();
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: error.message });
     }
   };
 

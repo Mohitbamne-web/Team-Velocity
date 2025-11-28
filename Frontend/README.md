@@ -64,6 +64,16 @@ This project is built with:
 
 Simply open [Lovable](https://lovable.dev/projects/80587dca-75c8-40be-981b-7c52b06be8af) and click on Share -> Publish.
 
+## Connecting to your backend
+
+The React app now talks directly to the Express API that lives in `../backend`. Create a `.env` file (or update your existing one) with the following value so the UI knows where to send requests:
+
+```
+VITE_API_BASE_URL=http://localhost:5000
+```
+
+Restart `npm run dev` after changing environment variables.
+
 ## Can I connect a custom domain to my Lovable project?
 
 Yes, you can!

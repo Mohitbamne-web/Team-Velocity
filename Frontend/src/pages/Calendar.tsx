@@ -1,50 +1,32 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Calendar as CalendarIcon, Clock, MapPin, Plus } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, isToday } from "date-fns";
+import { apiRequest } from "@/lib/api";
 
 export default function Calendar() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [events, setEvents] = useState<any[]>([]);
-  const [profile, setProfile] = useState<any>(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
 
-  useEffect(() => {
-    fetchProfile();
-    fetchEvents();
-  }, [user]);
-
-  const fetchProfile = async () => {
-    if (user) {
-      const { data } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
-      if (data) setProfile(data);
+  const fetchEvents = useCallback(async () => {
+    if (!token) return;
+    const weekStart = startOfWeek(selectedDate).toISOString();
+    const weekEnd = endOfWeek(selectedDate).toISOString();
+    try {
+      const data = await apiRequest<any[]>(`/common/events?start=${weekStart}&end=${weekEnd}`, { token });
+      setEvents(data);
+    } catch (error) {
+      console.error("Failed to load events", error);
     }
-  };
+  }, [selectedDate, token]);
 
-  const fetchEvents = async () => {
-    const weekStart = startOfWeek(selectedDate);
-    const weekEnd = endOfWeek(selectedDate);
-
-    const { data } = await supabase
-      .from("events")
-      .select(`
-        *,
-        creator:profiles(full_name, role)
-      `)
-      .gte("start_time", weekStart.toISOString())
-      .lte("start_time", weekEnd.toISOString())
-      .order("start_time", { ascending: true });
-
-    if (data) setEvents(data);
-  };
+  useEffect(() => {
+    fetchEvents();
+  }, [fetchEvents]);
 
   const weekDays = eachDayOfInterval({
     start: startOfWeek(selectedDate),
@@ -67,7 +49,7 @@ export default function Calendar() {
     return colors[type] || "default";
   };
 
-  const canCreateEvent = profile?.role === "faculty" || profile?.role === "admin";
+  const canCreateEvent = user?.role === "faculty" || user?.role === "admin";
 
   return (
     <div className="space-y-6">

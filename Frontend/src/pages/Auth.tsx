@@ -6,7 +6,6 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { authService } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
 import { GraduationCap } from "lucide-react";
@@ -20,7 +19,7 @@ export default function Auth() {
   const [signupFullName, setSignupFullName] = useState("");
   const [signupRole, setSignupRole] = useState<'student' | 'faculty' | 'admin'>('student');
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, login, register } = useAuth();
 
   useEffect(() => {
     if (user) {
@@ -33,21 +32,12 @@ export default function Auth() {
     setIsLoading(true);
 
     try {
-      const { error } = await authService.signIn(loginEmail, loginPassword);
-      
-      if (error) {
-        toast({
-          variant: "destructive",
-          title: "Login failed",
-          description: error.message,
-        });
-      } else {
-        toast({
-          title: "Welcome back!",
-          description: "You've successfully logged in.",
-        });
-        navigate("/");
-      }
+      await login(loginEmail, loginPassword);
+      toast({
+        title: "Welcome back!",
+        description: "You've successfully logged in.",
+      });
+      navigate("/");
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -64,21 +54,17 @@ export default function Auth() {
     setIsLoading(true);
 
     try {
-      const { error } = await authService.signUp(signupEmail, signupPassword, signupFullName, signupRole);
-      
-      if (error) {
-        toast({
-          variant: "destructive",
-          title: "Signup failed",
-          description: error.message,
-        });
-      } else {
-        toast({
-          title: "Account created!",
-          description: "Welcome to Campus Hub. You're now logged in.",
-        });
-        navigate("/");
-      }
+      await register({
+        name: signupFullName,
+        email: signupEmail,
+        password: signupPassword,
+        role: signupRole,
+      });
+      toast({
+        title: "Account created!",
+        description: "Welcome to Campus Hub. You're now logged in.",
+      });
+      navigate("/");
     } catch (error: any) {
       toast({
         variant: "destructive",

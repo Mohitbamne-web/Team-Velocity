@@ -1,51 +1,45 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Users, UserPlus } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/api";
 
 export default function Groups() {
-  const { user } = useAuth();
+  const { token } = useAuth();
   const [groups, setGroups] = useState<any[]>([]);
   const [myGroups, setMyGroups] = useState<Set<string>>(new Set());
 
+  const fetchGroups = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await apiRequest<{ groups: any[]; myGroupIds: string[] }>("/common/groups", { token });
+      setGroups(data.groups);
+      setMyGroups(new Set(data.myGroupIds));
+    } catch (error) {
+      console.error("Failed to load groups", error);
+    }
+  }, [token]);
+
   useEffect(() => {
     fetchGroups();
-    fetchMyGroups();
-  }, [user]);
-
-  const fetchGroups = async () => {
-    const { data } = await supabase
-      .from("groups")
-      .select("*, creator:profiles(full_name), members:group_members(count)")
-      .eq("is_public", true)
-      .order("created_at", { ascending: false });
-    if (data) setGroups(data);
-  };
-
-  const fetchMyGroups = async () => {
-    const { data } = await supabase
-      .from("group_members")
-      .select("group_id")
-      .eq("user_id", user?.id);
-    if (data) setMyGroups(new Set(data.map(m => m.group_id)));
-  };
+  }, [fetchGroups]);
 
   const handleJoin = async (groupId: string) => {
-    const { error } = await supabase.from("group_members").insert([{
-      group_id: groupId,
-      user_id: user?.id,
-      role: "member",
-    }]);
-
-    if (error) {
-      toast({ variant: "destructive", title: "Error", description: error.message });
-    } else {
+    try {
+      if (!token) {
+        throw new Error("Missing session. Please sign in again.");
+      }
+      await apiRequest(`/common/groups/${groupId}/join`, {
+        method: "POST",
+        token,
+      });
       toast({ title: "Success", description: "Joined group successfully" });
-      fetchMyGroups();
+      fetchGroups();
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Error", description: error.message });
     }
   };
 

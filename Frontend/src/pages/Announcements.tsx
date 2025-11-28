@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,15 +8,14 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Bell, Plus, Pin, Search } from "lucide-react";
-import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { toast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/api";
 
 export default function Announcements() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const [announcements, setAnnouncements] = useState<any[]>([]);
-  const [profile, setProfile] = useState<any>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreating, setIsCreating] = useState(false);
   const [newAnnouncement, setNewAnnouncement] = useState({
@@ -25,54 +24,23 @@ export default function Announcements() {
     priority: "normal",
   });
 
-  useEffect(() => {
-    fetchProfile();
-    fetchAnnouncements();
-
-    // Subscribe to realtime updates
-    const channel = supabase
-      .channel("announcements-changes")
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "announcements",
-        },
-        () => {
-          fetchAnnouncements();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user]);
-
-  const fetchProfile = async () => {
-    if (user) {
-      const { data } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", user.id)
-        .single();
-      if (data) setProfile(data);
+  const fetchAnnouncements = useCallback(async () => {
+    if (!token) return;
+    try {
+      const data = await apiRequest<any[]>("/common/announcements", { token });
+      setAnnouncements(data);
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Unable to load announcements",
+        description: error.message || "Something went wrong while fetching announcements.",
+      });
     }
-  };
+  }, [token]);
 
-  const fetchAnnouncements = async () => {
-    const { data } = await supabase
-      .from("announcements")
-      .select(`
-        *,
-        author:profiles(full_name, role)
-      `)
-      .order("is_pinned", { ascending: false })
-      .order("created_at", { ascending: false });
-
-    if (data) setAnnouncements(data);
-  };
+  useEffect(() => {
+    fetchAnnouncements();
+  }, [fetchAnnouncements]);
 
   const handleCreateAnnouncement = async () => {
     if (!newAnnouncement.title || !newAnnouncement.content) {
@@ -85,27 +53,30 @@ export default function Announcements() {
     }
 
     setIsCreating(true);
-    const { error } = await supabase.from("announcements").insert([
-      {
-        ...newAnnouncement,
-        author_id: user?.id,
-      },
-    ]);
-
-    if (error) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: error.message,
+    try {
+      if (!token) {
+        throw new Error("Missing session. Please sign in again.");
+      }
+      const created = await apiRequest("/common/announcements", {
+        method: "POST",
+        token,
+        body: newAnnouncement,
       });
-    } else {
+      setAnnouncements((prev) => [created, ...prev]);
       toast({
         title: "Success",
         description: "Announcement created successfully",
       });
       setNewAnnouncement({ title: "", content: "", priority: "normal" });
+    } catch (error: any) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error.message || "Could not create announcement",
+      });
+    } finally {
+      setIsCreating(false);
     }
-    setIsCreating(false);
   };
 
   const getPriorityColor = (priority: string) => {
@@ -124,7 +95,7 @@ export default function Announcements() {
       a.content.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const canCreateAnnouncement = profile?.role === "faculty" || profile?.role === "admin";
+  const canCreateAnnouncement = user?.role === "faculty" || user?.role === "admin";
 
   return (
     <div className="space-y-6">

@@ -1,52 +1,105 @@
 import React, { createContext, useContext, useEffect, useState } from "react";
-import { User, Session } from "@supabase/supabase-js";
-import { authService } from "@/lib/supabase";
 import { useNavigate } from "react-router-dom";
+import { apiRequest } from "@/lib/api";
+
+type Role = "student" | "faculty" | "admin";
+
+export interface AuthUser {
+  id: string;
+  name: string;
+  email: string;
+  role: Role;
+}
 
 interface AuthContextType {
-  user: User | null;
-  session: Session | null;
+  user: AuthUser | null;
+  token: string | null;
   loading: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  register: (payload: { name: string; email: string; password: string; role: Role }) => Promise<void>;
   signOut: () => Promise<void>;
 }
+
+const TOKEN_KEY = "campusHub.token";
+const USER_KEY = "campusHub.user";
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
-  useEffect(() => {
-    // Set up auth state listener
-    const { data: { subscription } } = authService.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
+  const persistAuth = (nextToken: string, nextUser: AuthUser) => {
+    setToken(nextToken);
+    setUser(nextUser);
+    localStorage.setItem(TOKEN_KEY, nextToken);
+    localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+  };
 
-    // Check for existing session
-    authService.getSession().then(({ session }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+  const clearAuth = () => {
+    setToken(null);
+    setUser(null);
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+  };
+
+  const hydrateFromStorage = async () => {
+    const storedToken = localStorage.getItem(TOKEN_KEY);
+    const storedUser = localStorage.getItem(USER_KEY);
+
+    if (!storedToken) {
       setLoading(false);
-    });
+      return;
+    }
 
-    return () => subscription.unsubscribe();
+    setToken(storedToken);
+
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const data = await apiRequest<{ user: AuthUser }>("/common", { token: storedToken });
+      persistAuth(storedToken, data.user);
+    } catch (error) {
+      clearAuth();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    hydrateFromStorage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const login = async (email: string, password: string) => {
+    const data = await apiRequest<{ token: string; user: AuthUser }>("/auth/login", {
+      method: "POST",
+      body: { email, password },
+    });
+    persistAuth(data.token, data.user);
+  };
+
+  const register = async ({ name, email, password, role }: { name: string; email: string; password: string; role: Role }) => {
+    const data = await apiRequest<{ token: string; user: AuthUser }>("/auth/register", {
+      method: "POST",
+      body: { name, email, password, role },
+    });
+    persistAuth(data.token, data.user);
+  };
+
   const signOut = async () => {
-    await authService.signOut();
-    setUser(null);
-    setSession(null);
+    clearAuth();
     navigate("/auth");
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signOut }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, signOut }}>
       {children}
     </AuthContext.Provider>
   );
